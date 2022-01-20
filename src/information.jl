@@ -1,62 +1,81 @@
-export pairwise_marginals_binary, 
+export pairwise_marginals_binary, marginals_binary, pairwise_MI_binary,
 pairwise_marginals, 
-pairwise_mutual_information
+pairwise_mutual_information,
+pairwise_MI,
+as_categorical_datas
 
 # using Statistics
-# using StatsFuns: xlogx, xlogy
+using StatsFuns: xlogx, xlogy
 using CUDA: CUDA, CuMatrix, CuVector, CuArray
 using DataFrames: DataFrame
-# using Tables
 
-function cache_distributions(bm, w::Union{Nothing, Vector}=nothing; α, flag=(pairwise=true, marginal=true))
-    
-    # parameters
-    D = size(bm)[2]
-    N = issomething(w) ? sum(w) : size(bm)[1]
-    m = Matrix{Float64}(Tables.matrix(bm))
-    notm = Matrix{Float64}(Tables.matrix(.!bm))
+#############################
+# Mutual Information Binary
+#############################
 
-    dis_cache = DisCache(D)
-    base = N + 4 * α
-    w = isnothing(w) ? ones(Float64, N) : w
-
-    # pairwise distribution
-    if flag.pairwise
-        dis_cache.pairwise[:,:,1] = (notm' * (notm .* w) .+ α) / base   # p00
-        dis_cache.pairwise[:,:,2] = (notm' * (m .* w) .+ α) / base      # p01
-        dis_cache.pairwise[:,:,3] = (m' * (notm .* w) .+ α) / base      # p10
-        dis_cache.pairwise[:,:,4] = (m' * (m .* w) .+ α) / base         # p11
-    end
-    # marginal distribution
-
-    if flag.marginal
-        dis_cache.marginal[:, 1] = (sum(notm .* w, dims=1) .+ 2 * α) / base
-        dis_cache.marginal[:, 2] = (sum(m .* w, dims=1).+ 2 * α) / base
-    end
-    dis_cache
-end
-
-function pairwise_marginals_binary(data; weights=nothing, pseudocount = 1.0)
+function pairwise_marginals_binary(data::Union{Matrix, CuMatrix}; weights=nothing, pseudocount = 1.0)
     N = isnothing(weights) ? size(data, 1) : sum(weights)
+    D = size(data, 2)
     base = N + 4 * pseudocount
     # not_data = .!data
     not_data = Float32.(.!data)
     data = Float32.(data)
+    pxy = similar(data, D, D, 4)
     
     if isnothing(weights)
-        count11 = transpose(data) * data
-        count01 = transpose(not_data) * data
-        count10 = transpose(data) * not_data
-        count00 = base .- count11 .- count10 .- count01
+        pxy[:, :, 4] = transpose(data) * data
+        pxy[:, :, 3] = transpose(data) * not_data
+        pxy[:, :, 2] = transpose(not_data) * data
     else
-        count11 = transpose(data) * (data .* weights)
-        count01 = transpose(not_data) * (data .* weights)
-        count10 = transpose(data) * (not_data .* weights)
-        count00 = base .- count11 .- count10 .- count01
+        pxy[:, :, 4] = transpose(data) * (data .* weights)
+        pxy[:, :, 3] = transpose(data) * (not_data .* weights)
+        pxy[:, :, 2] = transpose(not_data) * (data .* weights)
     end
-    ((count00 .+ pseudocount) / base, (count01 .+ pseudocount) / base,
-    (count10 .+ pseudocount) / base, (count11 .+ pseudocount) / base)
+    pxy[:, :, 1] = base .- pxy[:, :, 4] .- pxy[:, :, 3] .- pxy[:, :, 2]
+
+    pxy .+= pseudocount
+    pxy ./= base
+    pxy
 end
+
+
+function marginals_binary(data::Union{Matrix, CuMatrix}; weights=nothing, pseudocount = 1.0)
+
+    N = isnothing(weights) ? size(data, 1) : sum(weights)
+    base = N + 4 * pseudocount
+    data = Float32.(data)
+    
+    if isnothing(weights)
+        count1 = dropdims(sum(data, dims=1), dims=1)
+    else
+        count1 = dropdims(sum(data .* weights, dims=1), dims=1)
+    end
+    count0 = base .- count1
+    
+
+    (count0 .+ 2 * pseudocount) / base, (count1 .+ 2 * pseudocount) / base
+end
+
+
+function pairwise_MI_binary(data::Union{Matrix, CuMatrix}; weights=nothing, pseudocount=1.0)
+    pxy = pairwise_marginals_binary(data; weights=weights, pseudocount=pseudocount)
+    p0, p1 = marginals_binary(data; weights=weights, pseudocount=pseudocount)
+    D = size(data, 2)
+    pxpy = Float32.(similar(data, D, D, 4))
+    pxpy[:,:,1] = p0 * p0'
+    pxpy[:,:,2] = p0 * p1'
+    pxpy[:,:,3] = p1 * p0'
+    pxpy[:,:,4] = p1 * p1'
+    pxy_log_pxy = @. xlogx(pxy)
+    pxy_log_pxpy = @. xlogy(pxy, pxpy)
+    dropdims(sum(pxy_log_pxy - pxy_log_pxpy, dims=3), dims=3)
+end
+
+
+#############################
+# Mutual Information Categorical
+#############################
+
 
 "Compute an array giving all pairwise marginals estimated on empirical (weighted) data"
 function pairwise_marginals(data::Matrix, weights::Vector, num_cats = maximum(data); pseudocount = 1.0)
@@ -92,6 +111,7 @@ function pairwise_marginals(data::Matrix, weights::Vector, num_cats = maximum(da
 
     return pair_margs
 end
+
 
 function pairwise_marginals(data::CuMatrix, weights::CuVector, num_cats = maximum(data); pseudocount = 1.0)
     @assert minimum(data) > 0 "Categorical data labels are assumed to be indexed starting 1"
@@ -134,55 +154,6 @@ function pairwise_marginals(data::CuMatrix, weights::CuVector, num_cats = maximu
         end
     end
     return pair_margs
-end
-
-
-"Cache pairwise / marginal distribution for all variables in one dataset"
-mutable struct DisCache
-    pairwise::Array{Float64}
-    marginal::Array{Float64}
-end
-
-@inline dimension(discache::DisCache) = size(discache.marginal)[1]
-DisCache(num) = DisCache(Array{Float64}(undef, num, num, 4), Array{Float64}(undef, num, 2))
-
-#####################
-# Mutual Information
-#####################
-
-function mutual_information(dis_cache::DisCache)
-    D = dimension(dis_cache)
-    p0 = @view dis_cache.marginal[:, 1]
-    p1 = @view dis_cache.marginal[:, 2]
-    pxpy = Array{Float64}(undef, D, D, 4)
-    pxpy[:,:,1] = p0 * p0'
-    pxpy[:,:,2] = p0 * p1'
-    pxpy[:,:,3] = p1 * p0'
-    pxpy[:,:,4] = p1 * p1'
-    pxy_log_pxy = @. xlogx(dis_cache.pairwise)
-    pxy_log_pxpy = @. xlogy(dis_cache.pairwise, pxpy)
-    dropdims(sum(pxy_log_pxy - pxy_log_pxpy,dims=3), dims=3)
-end
-
-"Calculate mutual information of given bit matrix `bm`, example weights `w`, and smoothing pseudocount `α`"
-function mutual_information(bm, w::Union{Nothing, Vector}=nothing; α)
-    dis_cache = cache_distributions(bm, w; α=α)
-    mi = mutual_information(dis_cache)
-    return (dis_cache, mi)
-end
-
-"Calculate set mutual information"
-function set_mutual_information(mi::Matrix, sets::AbstractVector{<:AbstractVector})::Matrix
-    len = length(sets)
-    if len == size(mi)[1]
-        return mi
-    end
-
-    pmi = zeros(len, len)
-    for i in 1 : len, j in i + 1 : len
-        pmi[i, j] = pmi[j, i] = mean(mi[sets[i], sets[j]])
-    end
-    return pmi
 end
 
 
@@ -232,4 +203,84 @@ function pairwise_MI(dataset::Matrix, num_vars, num_cats, weights = nothing; pse
     end
     
     MI
+end
+
+function as_categorical_data(dataset::DataFrame, num_vars, num_cats)
+    
+    # Convert binary data to categorical data
+    if isweighted(dataset)
+        dataset, weights = split_sample_weights(dataset)
+        weights = convert(Vector{Float64}, weights)
+    else
+        weights = nothing
+    end
+    
+    num_samples = size(dataset, 1)
+    num_bits = ceil(Int,log2(num_cats))
+    
+    # Get categorical dataset from the binarized dataset
+    categorical_dataset = Matrix{UInt32}(undef, num_samples, num_vars)
+    if iscomplete(dataset)
+        for sample_idx = 1 : num_samples
+            for variable_idx = 1 : num_vars
+                @inbounds categorical_dataset[sample_idx, variable_idx] = as_cat(dataset[sample_idx, (variable_idx - 1) * num_bits + 1 : variable_idx * num_bits]; complete = true)
+            end
+        end
+    else # If the dataset contains missing values, we impute the missing values with the mode of each column
+        for variable_idx = 1 : num_vars
+            cat_counts::Array{UInt32} = zeros(UInt32, num_cats)
+            for sample_idx = 1 : num_samples
+                category = as_cat(dataset[sample_idx, (variable_idx - 1) * num_bits + 1 : variable_idx * num_bits]; complete = false)
+                if category != typemax(UInt32)
+                    cat_counts[category] += 1
+                end
+                @inbounds categorical_dataset[sample_idx, variable_idx] = category
+            end
+            cat_mode = argmax(cat_counts)
+            for sample_idx = 1 : num_samples
+                if categorical_dataset[sample_idx, variable_idx] == typemax(UInt32)
+                    @inbounds categorical_dataset[sample_idx, variable_idx] = cat_mode
+                end
+            end
+        end
+    end
+    return categorical_dataset, weights
+end
+
+
+isweighted(df::DataFrame) = 
+    names(df)[end] == "weight"
+isweighted(df::Vector{DataFrame}) = 
+    all(d -> isweighted(d), df)
+
+
+"Is the data complete (no missing values)?"
+iscomplete(data::DataFrame) = 
+    all(iscomplete_col, eachcol_unweighted(data))
+iscomplete(data::Vector{DataFrame}) = all(iscomplete, data)
+
+"Is the data column complete (no missing values)?"
+iscomplete_col(::AbstractVector{Bool}) = true
+iscomplete_col(::AbstractVector{<:Int}) = true
+iscomplete_col(::AbstractVector{<:AbstractFloat}) = true
+iscomplete_col(x::AbstractVector{Union{Bool,Missing}}) = !any(ismissing, x)
+iscomplete_col(x::AbstractVector{Union{<:AbstractFloat,Missing}}) = !any(ismissing, x)
+
+
+"Iterate over columns, excluding the sample weight column"
+eachcol_unweighted(data::DataFrame) = 
+    isweighted(data) ? eachcol(data)[1:end-1] : eachcol(data)
+
+
+function as_cat(bits; complete)
+    if !complete && !iscomplete(bits)
+        return typemax(UInt32)
+    end
+    
+    category::UInt32 = UInt32(0)
+    for bit_idx = length(bits) : -1 : 1
+        category = (category << 1) + bits[bit_idx]
+    end
+    
+    (category == 0) ? 2^(length(bits)) : category
 end
