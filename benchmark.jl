@@ -63,5 +63,9 @@ train_bits = bitsfeatures(train_int);
 test_bits = bitsfeatures(train_int);
 
 train_bits_gpu = to_gpu(train_bits);
-@time CUDA.@sync pairwise_marginals_binary(train_bits_gpu, pseudocount=0.0);
-@time CUDA.@sync pairwise_MI_binary(train_bits_gpu, pseudocount=0.0);
+@time CUDA.@sync MI = pairwise_MI_binary(train_bits_gpu, pseudocount=0.0);
+MI = to_cpu(MI)
+@time max_spanning_tree(MI)
+@time topk_MST(MI)
+
+# TODO GPU MST
