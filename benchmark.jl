@@ -19,12 +19,17 @@ all(m1[:, :, 1, 2] .== Float32.(m2[:, :, 2]))
 all(m1[:, :, 2, 1] .== Float32.(m2[:, :, 3]))
 all(m1[:, :, 2, 2] .== Float32.(m2[:, :, 4]))
 
-mi1 = ChowLiuTrees.pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=0.0)
+# marginal 
+p0, p1 = marginals_binary(dataset; weights=nothing, pseudocount=0.0)
+mi1 = pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=0.0)
+mi1 = pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=0.0)
 mi2 = pairwise_MI_binary(dataset, pseudocount=0.0)
-pairwise_MI(dataset .+ 1, num_vars, 2; pseudocount = 0.0)
 
-# TODO: Mi1 != Mi2
+mi1 .- mi2
+
+# 
 # TODO: pseudocount
+# TODO: add simple test
 
 
 # Benchmark

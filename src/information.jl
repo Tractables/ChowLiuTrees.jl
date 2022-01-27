@@ -18,8 +18,8 @@ function pairwise_marginals_binary(data::Union{Matrix, CuMatrix}; weights=nothin
     D = size(data, 2)
     base = N + 4 * pseudocount
     # not_data = .!data
-    not_data = Float32.(.!data)
-    data = Float32.(data)
+    not_data = Float64.(.!data)
+    data = Float64.(data)
     pxy = similar(data, D, D, 4)
     
     if isnothing(weights)
@@ -43,7 +43,7 @@ function marginals_binary(data::Union{Matrix, CuMatrix}; weights=nothing, pseudo
 
     N = isnothing(weights) ? size(data, 1) : sum(weights)
     base = N + 4 * pseudocount
-    data = Float32.(data)
+    data = Float64.(data)
     
     if isnothing(weights)
         count1 = dropdims(sum(data, dims=1), dims=1)
@@ -61,7 +61,7 @@ function pairwise_MI_binary(data::Union{Matrix, CuMatrix}; weights=nothing, pseu
     pxy = pairwise_marginals_binary(data; weights=weights, pseudocount=pseudocount)
     p0, p1 = marginals_binary(data; weights=weights, pseudocount=pseudocount)
     D = size(data, 2)
-    pxpy = Float32.(similar(data, D, D, 4))
+    pxpy = Float64.(similar(data, D, D, 4))
     pxpy[:,:,1] = p0 * p0'
     pxpy[:,:,2] = p0 * p1'
     pxpy[:,:,3] = p1 * p0'
@@ -192,7 +192,8 @@ function pairwise_MI(dataset::Matrix, num_vars, num_cats, weights = nothing; pse
     MI = zeros(Float64, num_vars, num_vars)
     for var1_idx = 1 : num_vars
         for var2_idx = var1_idx : num_vars
-            @inbounds MI[var1_idx, var2_idx] = sum(joint_cont[var1_idx, var2_idx, :, :] .* (@. log(sum_weights .* joint_cont[var1_idx, var2_idx, :, :] / (marginal_cont[var1_idx, :] .* marginal_cont[var2_idx, :]')))) / sum_weights
+            @inbounds MI[var1_idx, var2_idx] = sum(xlogy.(joint_cont[var1_idx, var2_idx, :, :], 
+            joint_cont[var1_idx, var2_idx, :, :] ./ (marginal_cont[var1_idx, :] .* marginal_cont[var2_idx, :]')))
         end
     end
     
