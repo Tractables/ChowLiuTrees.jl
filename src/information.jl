@@ -3,7 +3,6 @@ export pairwise_marginal, pairwise_MI
 using LinearAlgebra: diagind, diag
 using StatsFuns: xlogx, xlogy
 using CUDA: CUDA, CuMatrix, CuVector, CuArray
-using DataFrames: DataFrame
 
 
 #############################
@@ -12,7 +11,7 @@ using DataFrames: DataFrame
 
 function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix}; 
         weights::Union{Vector, Nothing}=nothing, 
-        pseudocount=1.0,
+        pseudocount=0.0,
         Float=Float64)
     N = isnothing(weights) ? size(data, 1) : sum(weights)
     D = size(data, 2)
@@ -49,9 +48,9 @@ end
 
 function pairwise_MI(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix}; 
         weights=nothing, 
-        pseudocount=1.0,
+        pseudocount=0.0,
         Float=Float64)
-    pxy = pairwise_marginal(data; weights=weights, pseudocount=pseudocount)
+    pxy = pairwise_marginal(data; weights, pseudocount, Float)
     p0 = diag(pxy[:, :, 1])
     p1 = diag(pxy[:, :, 4])
     D = size(data, 2)
@@ -62,7 +61,12 @@ function pairwise_MI(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
     pxpy[:,:,4] = p1 * p1'
     pxy_log_pxy = @. xlogx(pxy)
     pxy_log_pxpy = @. xlogy(pxy, pxpy)
-    dropdims(sum(pxy_log_pxy - pxy_log_pxpy, dims=3), dims=3)
+    MI = dropdims(sum(pxy_log_pxy - pxy_log_pxpy, dims=3), dims=3)
+    if data isa CuMatrix{Bool}
+        CUDA.unsafe_free!(pxy)
+        CUDA.unsafe_free!(pxpy)
+    end
+    MI
 end
 
 
@@ -73,7 +77,7 @@ end
 function pairwise_marginal(data::Matrix;
         weights::Union{Vector, Nothing}=nothing,
         num_cats=maximum(data),
-        pseudocount=1.0,
+        pseudocount=0.0,
         Float=Float64)
     @assert minimum(data) > 0 "Categorical data labels are assumed to be indexed starting 1"
 
@@ -122,7 +126,7 @@ end
 function pairwise_marginal(data::CuMatrix; 
         weights::Union{CuVector, Nothing}=nothing,
         num_cats=maximum(data),
-        pseudocount=1.0,
+        pseudocount=0.0,
         Float=Float64)
 
     @assert minimum(data) > 0 "Categorical data labels are assumed to be indexed starting 1"
@@ -153,7 +157,7 @@ function pairwise_marginal(data::CuMatrix;
                 if i!=j
                     @inbounds pair_margs_device[i,j,:,:] .= pair_smooth
                 else
-                    @inbounds pair_margs_device[i,j,:,:] .= zero(Float32)
+                    @inbounds pair_margs_device[i,j,:,:] .= zero(Float)
                     for l = 1:num_cats
                         @inbounds pair_margs_device[i,j,l,l] = single_smooth
                     end
@@ -180,9 +184,9 @@ end
 
 function pairwise_MI(data::Matrix;
             weights::Union{Vector, Nothing} = nothing,
-            num_cats = maximum(data),
-            pseudocount = 1.0,
-            Float = Float64)
+            num_cats=maximum(data),
+            pseudocount=0.0,
+            Float=Float64)
     num_samples = size(data, 1)
     num_vars = size(data, 2)
     
@@ -196,7 +200,7 @@ function pairwise_MI(data::Matrix;
     joint_cont = pairwise_marginal(data; weights, num_cats, pseudocount)
     
     # `marginal_cont[i, j]' is the total weight of sample whose i-th variable is j
-    marginal_cont = zeros(Float64, num_vars, num_cats)
+    marginal_cont = zeros(Float, num_vars, num_cats)
     for i = 1:num_vars
         for j = 1:num_cats
             @inbounds marginal_cont[i,j] = joint_cont[i,i,j,j]

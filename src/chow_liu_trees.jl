@@ -1,74 +1,53 @@
-using DataStructures: PriorityQueue, enqueue!, dequeue!, dequeue_pair!
-using Graphs: SimpleGraph, SimpleDiGraph, complete_graph, kruskal_mst, 
-    bfs_tree, center, connected_components, induced_subgraph, src, dst
-using SimpleWeightedGraphs: SimpleWeightedGraph, SimpleWeightedEdge
-using MetaGraphs: MetaDiGraph, set_prop!, props, nv, ne, edges, add_edge!, vertices
+using DataStructures: PriorityQueue, enqueue!, dequeue!, dequeue_pair!,
+IntDisjointSets, in_same_set, union!
+using CUDA
 
-export MST1, topk_MST, chow_liu_tree1
+export learn_chow_liu_tree
 
 
-function chow_liu_tree1(train_x::Union{Matrix, CuMatrix}; pseudocount=0.1)
-    MI = pairwise_MI_binary(train_x, pseudocount=pseudocount);
-    MI = Array(MI)
-    topk_MST(MI)
+"Learn Chow Liu Tree(s). It will run on CPU/GPU based on where `train_x` is.
+
+Arguments: 
+- `train_x`: training data. If want gpu, move to gpu before calling this `CuArray(train_x)`.
+
+Keyword arguments:
+- `num_trees=1`: number of trees you want to learned.
+- `dropout_prob=0.0`: drop edges with probability `dropout_prob` when learning maximum spanning tree.
+- `weights=nothing`: weights of samples. Weights are all 1 if `nothing`.
+- `pseudocount=0.0`: add a total of pseudo count spread out overall all categories.
+- `Float=Float64`: precision. `Float32` is faster if `train_x` a large.
+"
+function learn_chow_liu_tree(train_x::Union{Matrix, CuMatrix, BitMatrix};
+        num_trees::Integer=1, dropout_prob::Float64=0.0,
+        weights::Union{Vector, CuVector, Nothing}=nothing, 
+        pseudocount::Float64=0.0,
+        Float=Float64)
+    CUDA.@time MI = pairwise_MI(train_x; weights, pseudocount, Float)
+    @time MI = Array(MI) # TODO: GPU MST
+    @time topk_MST(- MI; num_trees, dropout_prob)
 end
 
-function MST1(MI; clt_root="graph_center")
 
-    features_num = size(MI, 1)
-    # maximum spanning tree/ forest
-    g = SimpleWeightedGraph(complete_graph(features_num))
-    mst_edges = kruskal_mst(g,- MI)
-    tree = SimpleGraph(features_num)
-    map(mst_edges) do edge
-        add_edge!(tree, src(edge), dst(edge))
-    end
-
-    # Build rooted tree / forest
-    if clt_root == "graph_center"
-        clt = SimpleDiGraph(features_num)
-        for c in filter(c -> (length(c) > 1), connected_components(tree))
-            sg, vmap = induced_subgraph(tree, c)
-            sub_root = vmap[center(sg)[1]]
-            clt = union(clt, bfs_tree(tree, sub_root))
-        end
-    elseif clt_root == "rand"
-        roots = [rand(c) for c in connected_components(tree)]
-        clt = SimpleDiGraph(features_num)
-        for root in roots clt = union(clt, bfs_tree(tree, root)) end
-    else
-        error("Cannot learn CLT with root $clt_root")
-    end
+"Top k minimum spanning trees for a complete graph with `weights` as weights
+http://www.nda.ac.jp/~yamada/paper/enum-mst.pdf
+"
+function topk_MST(weights::Matrix{Float64}; 
+        num_trees::Integer=1, dropout_prob::Float64=0.0)
     
-    clt = MetaDiGraph(clt)
-    parent = parent_vector(clt)
-    for (c, p) in enumerate(parent)
-        set_prop!(clt, c, :parent, p)
-    end
-
-    return clt
-end
-
-
-"Reference: Listing all the minimum spanning trees in an undirected graph
- http://www.nda.ac.jp/~yamada/paper/enum-mst.pdf"
- function topk_MST(MI; num_trees::Integer = 1, dropout_prob::Float64 = 0.0)
-    num_vars = size(MI, 1)
     # Priority queue that maintain candidate MSTs
-    candidates = PriorityQueue{Tuple{Vector{SimpleWeightedEdge}, Vector{SimpleWeightedEdge}, Vector{SimpleWeightedEdge}}, Float32}()
+    T = Vector{Tuple{Int, Int}}
+    candidates = PriorityQueue{Tuple{T, T, T}, Float32}()
     
-    # The fully connect graph and its weight
-    g = SimpleWeightedGraph(complete_graph(num_vars))
-    weights = -MI
-    
-    included_edges::Vector{SimpleWeightedEdge} = Vector{SimpleWeightedEdge}()
-    excluded_edges::Vector{SimpleWeightedEdge} = Vector{SimpleWeightedEdge}()
-    reuse = Matrix{Float64}(undef, num_vars, num_vars)
-    topk_msts::Vector{Vector{SimpleWeightedEdge}} = Vector{Vector{SimpleWeightedEdge}}()
+    included_edges::T = T()
+    excluded_edges::T = T()
+    reuse = similar(weights)
+    topk_msts::Vector{T} = Vector{T}()
     
     # Initialize `candidate` with the global MST
-    mst_edges, total_weight = MST(g; weights, included_edges, excluded_edges, reuse, dropout_prob = 0.0)
+    mst_edges, total_weight = MST(weights, included_edges, excluded_edges;
+                                  reuse, dropout_prob=0.0)
     enqueue!(candidates, (mst_edges, included_edges, excluded_edges), total_weight)
+    
     
     if Threads.nthreads() == 1
         
@@ -99,7 +78,8 @@ end
                 push!(excluded_edges, mst_edges[edge_idx])
                 edge_added = true
 
-                candidate_mst, total_weight = MST(g; weights, included_edges, excluded_edges, reuse, dropout_prob)
+                candidate_mst, total_weight = MST(weights, included_edges, excluded_edges;
+                                                reuse, dropout_prob)
                 if candidate_mst !== nothing
                     # A shallow copy of the vectors `included_edges` and `excluded_edges` is sufficient
                     enqueue!(candidates, (candidate_mst, copy(included_edges), copy(excluded_edges)), total_weight) 
@@ -111,11 +91,9 @@ end
         
         # Parallel code
         reuse = map(1:Threads.nthreads()) do idx
-            Matrix{Float64}(undef, num_vars, num_vars)
+            similar(weights)
         end
-        g = map(1:Threads.nthreads()) do idx
-            deepcopy(g)
-        end
+
         weights = map(1:Threads.nthreads()) do idx
             deepcopy(weights)
         end
@@ -149,7 +127,11 @@ end
                 end
 
                 id = Threads.threadid()
-                candidate_mst, total_weight = MST(g[id], weights[id], curr_included_edges, curr_excluded_edges; reuse = reuse[id], dropout_prob)
+                candidate_mst, total_weight = MST(weights[id], 
+                                                curr_included_edges, 
+                                                curr_excluded_edges; 
+                                                reuse = reuse[id], 
+                                                dropout_prob)
 
                 lock(l)
                 if candidate_mst !== nothing
@@ -163,55 +145,39 @@ end
     end
     
     # Post-process the top-K Spanning Trees
-    map(topk_msts) do mst_edges
-        MStree = SimpleGraph(num_vars)
-        map(mst_edges) do edge
-            add_edge!(MStree, src(edge), dst(edge))
-        end
-        
-        # Use the graph center of `MStree' as the root node of the CLT
-        clt = SimpleDiGraph(num_vars)
-        for c in filter(c -> (length(c) > 1), connected_components(MStree))
-            sg, vmap = induced_subgraph(MStree, c)
-            sub_root = vmap[center(sg)[1]]
-            clt = union(clt, bfs_tree(MStree, sub_root))
-        end
-
-        MetaDiGraph(clt)
-    end
+    topk_msts
 end
 
 
 "Compute the Minimum Spanning Tree (MST) of graph g with weights `weights`, with
  constraints such that `included_edges` should be included while `excluded_edges` 
  should be excluded."
-function MST(g::SimpleWeightedGraph;
-             weights::Matrix{<:AbstractFloat}, 
-             included_edges::Vector{SimpleWeightedEdge}, 
-             excluded_edges::Vector{SimpleWeightedEdge},
-             reuse::Matrix{<:AbstractFloat}, dropout_prob = 0.0)
+function MST(weights::Matrix{Float64}, 
+             included_edges::Vector{Tuple{Int, Int}}, 
+             excluded_edges::Vector{Tuple{Int, Int}};
+             reuse::Matrix{Float64}, dropout_prob=0.0)
     T = eltype(weights)
     @inbounds @views reuse[:, :] .= weights[:, :]
     
     # Dropout
     if dropout_prob > 1e-8
         dropped_mask = rand(Bernoulli(dropout_prob), size(reuse, 1), size(reuse, 2))
-        @inbounds @views reuse[dropped_mask] .= 10000.0
+        @inbounds @views reuse[dropped_mask] .= Inf
     end
     
     # Add constraints
     map(included_edges) do edge
-        reuse[src(edge), dst(edge)] = -10000.0
-        reuse[dst(edge), src(edge)] = -10000.0
+        reuse[edge[1], edge[2]] = -Inf
+        reuse[edge[2], edge[1]] = -Inf
         nothing # Return nothing to save some effort
     end
     map(excluded_edges) do edge
-        reuse[src(edge), dst(edge)] = 10000.0
-        reuse[dst(edge), src(edge)] = 10000.0
+        reuse[edge[1], edge[2]] = Inf
+        reuse[edge[2], edge[1]] = Inf
         nothing # Return nothing to save some effort
     end
     
-    mst_edges = kruskal_mst(g, reuse)
+    mst_edges = kruskal_mst_complete(reuse)
     
     # Senity check
     valid_tree::Bool = true
@@ -234,7 +200,7 @@ function MST(g::SimpleWeightedGraph;
         # Compute the tree weight
         total_weight::T = 0.0
         map(mst_edges) do edge
-            total_weight += weights[src(edge), dst(edge)]
+            total_weight += weights[edge[1], edge[2]]
             nothing
         end
         mst_edges, total_weight
@@ -243,9 +209,36 @@ function MST(g::SimpleWeightedGraph;
     end
 end
 
-function parent_vector(tree)::Vector{Int64}
-    v = zeros(Int64, nv(tree)) # parent of roots is 0
-    foreach(e->v[dst(e)] = src(e), edges(tree))
-    return v
-end
 
+function kruskal_mst_complete(distmx::Matrix{Float64}; minimize=true)
+    T = eltype(distmx)
+
+    nv = size(distmx, 1)
+    ne = Int(nv * (nv - 1) / 2)
+    connected_vs = IntDisjointSets(nv)
+
+    mst = Vector{Tuple{Int64, Int64}}()
+    sizehint!(mst, nv - 1)
+
+    weights = Vector{T}()
+    sizehint!(weights, ne)
+    edge_list = []
+    for i in 1 : nv
+        for j in i + 1 : nv
+            push!(edge_list, (i, j))
+        end
+    end
+
+    for e in edge_list
+        push!(weights, distmx[e[1], e[2]])
+    end
+
+    for e in edge_list[sortperm(weights; rev=!minimize)]
+        if !in_same_set(connected_vs, e[1], e[2])
+            union!(connected_vs, e[1], e[2])
+            push!(mst, e)
+            (length(mst) >= nv - 1) && break
+        end
+    end
+    return mst
+end
