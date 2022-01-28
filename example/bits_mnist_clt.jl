@@ -32,6 +32,8 @@ train_gpu, test_gpu = mnist_gpu()
 
 # Learn a Chow Liu Tree Structure
 @time learn_chow_liu_tree(train_gpu; Float=Float64, pseudocount=1.0)
+@time learn_chow_liu_tree(train_gpu; Float=Float64, pseudocount=1.0)
 
+@time learn_chow_liu_tree(train_gpu; Float=Float32, pseudocount=1.0) # faster
 @time learn_chow_liu_tree(train_gpu; Float=Float32, pseudocount=1.0) # faster
 
