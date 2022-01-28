@@ -10,8 +10,8 @@ dataset = Matrix(train_x)
 num_samples = size(dataset, 1)
 num_vars = size(dataset, 2)
 
-m1 = ChowLiuTrees.pairwise_marginals(dataset .+ 1, ones(Int32, num_samples), pseudocount=0.0);
-m2 = pairwise_marginals_binary(dataset, pseudocount=0.0);
+m1 = ChowLiuTrees.pairwise_marginals(dataset .+ 1, ones(Int32, num_samples), pseudocount=1.0);
+m2 = pairwise_marginals_binary(dataset, pseudocount=1.0);
 
 # sanity check
 all(m1[:, :, 1, 1] .== Float32.(m2[:, :, 1]))
@@ -19,12 +19,18 @@ all(m1[:, :, 1, 2] .== Float32.(m2[:, :, 2]))
 all(m1[:, :, 2, 1] .== Float32.(m2[:, :, 3]))
 all(m1[:, :, 2, 2] .== Float32.(m2[:, :, 4]))
 
-mi1 = ChowLiuTrees.pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=0.0)
-mi2 = pairwise_MI_binary(dataset, pseudocount=0.0)
-pairwise_MI(dataset .+ 1, num_vars, 2; pseudocount = 0.0)
 
-# TODO: Mi1 != Mi2
+# marginal 
+p0, p1 = marginals_binary(dataset; weights=nothing, pseudocount=1.0/4)
+mi1 = pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=1.0)
+mi1 = pairwise_MI(train_x .+ 1, num_vars, 2, pseudocount=1.0)
+mi2 = pairwise_MI_binary(dataset, pseudocount=1.0)
+
+mi1 .- mi2
+
+# 
 # TODO: pseudocount
+# TODO: add simple test
 
 
 # Benchmark
@@ -63,6 +69,8 @@ train_bits = bitsfeatures(train_int);
 test_bits = bitsfeatures(train_int);
 
 train_bits_gpu = to_gpu(train_bits);
+m2 = pairwise_marginals_binary(train_bits, pseudocount=1.0/4);
+
 @time CUDA.@sync MI = pairwise_MI_binary(train_bits_gpu, pseudocount=0.0);
 MI = to_cpu(MI)
 @time max_spanning_tree(MI)
