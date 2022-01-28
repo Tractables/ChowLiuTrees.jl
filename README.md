@@ -1,20 +1,9 @@
 # ChowLiuTrees.jl
 
-This package provides functionalities for learning Chow-Liu Trees from data. It is part of the [Juice package](https://github.com/Juice-jl) (Julia Circuit Empanada).
+[![Unit Tests](https://github.com/Juice-jl/ChowLiuTrees.jl/workflows/Unit%20Tests/badge.svg)](https://github.com/Juice-jl/ChowLiuTrees.jl/actions?query=workflow%3A%22Unit+Tests%22+branch%3Amain)  [![codecov](https://codecov.io/gh/Juice-jl/ChowLiuTrees.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Juice-jl/ChowLiuTrees.jl)
 
-## Installation
-You can enter Pkg mode by hitting ], and then
-````
-(v1.7) pkg> add ChowLiuTrees
-````
+This package provides an efficient implementation for learning [https://en.wikipedia.org/wiki/Chow%E2%80%93Liu_tree](Chow-Liu Trees) from binary and categorical data.
+As such, this package also provides functions to estimate a mutual information matrix from data, both on CPU and on GPU, and function to compute (top-k) spanning trees.
 
 ## Example
-See under folder `example` for example usage.
-
-## Testing
-
-To make sure everything is working correctly, you can run our test suite as follows. The first time you run the tests will trigger a few slow downloads of various test resources.
-
-```bash
-julia --color=yes -e 'using Pkg; Pkg.test("ChowLiuTrees")'
-```
+See the `example` directory and unit tests for example usage.
