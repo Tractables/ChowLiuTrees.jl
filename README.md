@@ -9,7 +9,7 @@ You can enter Pkg mode by hitting ], and then
 ````
 
 ## Example
-See under folder `example` for example.
+See under folder `example` for example usage.
 
 ## Testing
 

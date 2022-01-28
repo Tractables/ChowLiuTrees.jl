@@ -20,7 +20,7 @@ Keyword arguments:
 function learn_chow_liu_tree(train_x::Union{Matrix, CuMatrix, BitMatrix};
         num_trees::Integer=1, dropout_prob::Float64=0.0,
         weights::Union{Vector, CuVector, Nothing}=nothing, 
-        pseudocount::Float64=0.0,
+        pseudocount::Float64=1.0,
         Float=Float64)
     CUDA.@time MI = pairwise_MI(train_x; weights, pseudocount, Float)
     @time MI = Array(MI) # TODO: GPU MST
@@ -31,7 +31,7 @@ end
 "Top k minimum spanning trees for a complete graph with `weights` as weights
 http://www.nda.ac.jp/~yamada/paper/enum-mst.pdf
 "
-function topk_MST(weights::Matrix{Float64}; 
+function topk_MST(weights::Matrix; 
         num_trees::Integer=1, dropout_prob::Float64=0.0)
     
     # Priority queue that maintain candidate MSTs
@@ -152,10 +152,10 @@ end
 "Compute the Minimum Spanning Tree (MST) of graph g with weights `weights`, with
  constraints such that `included_edges` should be included while `excluded_edges` 
  should be excluded."
-function MST(weights::Matrix{Float64}, 
+function MST(weights::Matrix, 
              included_edges::Vector{Tuple{Int, Int}}, 
              excluded_edges::Vector{Tuple{Int, Int}};
-             reuse::Matrix{Float64}, dropout_prob=0.0)
+             reuse::Matrix, dropout_prob=0.0)
     T = eltype(weights)
     @inbounds @views reuse[:, :] .= weights[:, :]
     
@@ -210,7 +210,7 @@ function MST(weights::Matrix{Float64},
 end
 
 
-function kruskal_mst_complete(distmx::Matrix{Float64}; minimize=true)
+function kruskal_mst_complete(distmx::Matrix; minimize=true)
     T = eltype(distmx)
 
     nv = size(distmx, 1)
