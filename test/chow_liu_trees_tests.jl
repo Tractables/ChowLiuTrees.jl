@@ -7,7 +7,9 @@ using ChowLiuTrees
           1 0 2 5
           3 2 0 6
           4 5 6 0])
+
     msts1 = ChowLiuTrees.topk_MST(mi, num_trees=10)
+    
     msts2 = [[(1, 2), (2, 3), (1, 4)],
     [(1, 2), (1, 3), (1, 4)],
     [(1, 2), (2, 3), (2, 4)],

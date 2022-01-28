@@ -25,13 +25,18 @@ using ChowLiuTrees
     @test mi_bit[2,3] ≈ 0.013844293808390695
     @test mi_bit[3,3] ≈ 0.6730116670092565
 
+    data_types = if CUDA.functional()
+        [CuMatrix{Bool}, Matrix{Bool}, Matrix{Int}, ] # CuArray{Int}
+    else
+        [Matrix{Bool}, Matrix{Int}]
+    end
    
     for pseudocount in [0.0, 1.0, 100.0]
         for weights in [nothing, ones(4), [0.1, 0.2, 0.3, 0.4]]
             for Float in [Float64, Float32]
                 mar1 = pairwise_marginal(x_bit, pseudocount=pseudocount)
                 mi1 = pairwise_MI(x_bit, pseudocount=pseudocount) 
-                for T in [CuArray{Bool}, Matrix{Bool}, Matrix{Int}, ] # CuArray{Int}
+                for T in data_types
                     x2 = T(x_bit)
                     if T == Matrix{Int}
                         x2 .+= 1
