@@ -32,28 +32,27 @@ using ChowLiuTrees
     end
    
     for pseudocount in [0.0, 1.0, 100.0]
-        for weights in [nothing, ones(4), [0.1, 0.2, 0.3, 0.4]]
+        for weights in [nothing, ones(10), 
+                       [1.0, 0.5, 1.0, 2.0, 0.7, 1.0, 0.5, 1.0, 1.3, 1.0]]
             for Float in [Float64, Float32]
-                mar1 = pairwise_marginal(x_bit, pseudocount=pseudocount)
-                mi1 = pairwise_MI(x_bit, pseudocount=pseudocount) 
+                mar1 = pairwise_marginal(x_bit, 
+                        weights=weights, pseudocount=pseudocount, Float=Float)
+                mi1 = pairwise_MI(x_bit,
+                        weights=weights, pseudocount=pseudocount, Float=Float) 
                 for T in data_types
                     x2 = T(x_bit)
                     if T == Matrix{Int}
                         x2 .+= 1
                     end
-
-                    if T == CuArray{Bool} && !isnothing(weights)
-                        weights = CuArray(weights)
-                    end
-
-                    mar2 = pairwise_marginal(x2; pseudocount=pseudocount)
-                    mi2 = pairwise_MI(x2; pseudocount=pseudocount)
+                    mar2 = pairwise_marginal(x2;
+                            weights=weights, pseudocount=pseudocount, Float=Float)
+                    mi2 = pairwise_MI(x2; 
+                            weights=weights, pseudocount=pseudocount, Float=Float)
                     
-                    if T == CuArray{Bool} 
+                    if T == CuMatrix{Bool}
                         mar2 = Array(mar2)
                         mi2 = Array(mi2)
                     end
-
                     if T == Matrix{Int}
                         @test all(mar2[:, :, 1, 1] .== mar1[:, :, 1])
                         @test all(mar2[:, :, 1, 2] .== mar1[:, :, 2])
@@ -62,12 +61,11 @@ using ChowLiuTrees
                     else
                         @test all(mar1 .== mar2)
                     end
-                    @test all(mi1 .≈ mi2)
+                    @test all(isapprox(mi1, mi2; atol=1e-5))
                 end
             end
         end
     end
-    
 end
 
 

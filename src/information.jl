@@ -10,12 +10,15 @@ using CUDA: CUDA, CuMatrix, CuVector, CuArray
 #############################
 
 function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix}; 
-        weights::Union{Vector, Nothing}=nothing, 
+        weights::Union{Vector, CuVector, Nothing}=nothing, 
         pseudocount=0.0,
         Float=Float64)
     N = isnothing(weights) ? size(data, 1) : sum(weights)
     D = size(data, 2)
     base = N + pseudocount
+    if data isa CuMatrix{Bool} && !isnothing(weights)
+        weights = CuVector(weights)
+    end
     # not_data = .!data
     not_data = Float.(.!data)
     data = Float.(data)
@@ -26,6 +29,7 @@ function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
         pxy[:, :, 3] = transpose(data) * not_data
         pxy[:, :, 2] = transpose(not_data) * data
     else
+        
         pxy[:, :, 4] = transpose(data) * (data .* weights)
         pxy[:, :, 3] = transpose(data) * (not_data .* weights)
         pxy[:, :, 2] = transpose(not_data) * (data .* weights)
