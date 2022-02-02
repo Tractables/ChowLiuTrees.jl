@@ -23,7 +23,7 @@ function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
     if data isa CuMatrix{Bool} && !isnothing(weights)
         weights = CuVector(weights)
     end
-    # not_data = .!data
+
     not_data = Float.(.!data)
     data = Float.(data)
     pxy = similar(data, D, D, 4)
@@ -32,8 +32,7 @@ function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
         pxy[:, :, 4] = transpose(data) * data
         pxy[:, :, 3] = transpose(data) * not_data
         pxy[:, :, 2] = transpose(not_data) * data
-    else
-        
+    else 
         pxy[:, :, 4] = transpose(data) * (data .* weights)
         pxy[:, :, 3] = transpose(data) * (not_data .* weights)
         pxy[:, :, 2] = transpose(not_data) * (data .* weights)
@@ -50,6 +49,10 @@ function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
     @view(pxy[:,:, 3])[diag] .-= joint_count
     @view(pxy[:,:, 4])[diag] .+= joint_count
 
+    if data isa CuMatrix
+        CUDA.unsafe_free!(data)
+        CUDA.unsafe_free!(not_data)
+    end
     pxy ./= base
 end
 
@@ -73,6 +76,8 @@ function pairwise_MI(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
     if data isa CuMatrix{Bool}
         CUDA.unsafe_free!(pxy)
         CUDA.unsafe_free!(pxpy)
+        CUDA.unsafe_free!(pxy_log_pxy)
+        CUDA.unsafe_free!(pxy_log_pxpy)
     end
     MI
 end
