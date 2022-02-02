@@ -23,8 +23,14 @@ function learn_chow_liu_tree(train_x::Union{Matrix, CuMatrix, BitMatrix};
         pseudocount::Float64=1.0,
         Float=Float64)
     MI = pairwise_MI(train_x; weights, pseudocount, Float)
-    MI = Array(MI) # TODO: GPU MST
-    topk_MST(- MI; num_trees, dropout_prob)
+    if MI isa CuArray
+        MI_cpu = Array(MI) # TODO: GPU MST
+        CUDA.unsafe_free!(MI)
+    else
+        MI_cpu = MI
+    end
+
+    topk_MST(-MI_cpu; num_trees, dropout_prob)
 end
 
 
