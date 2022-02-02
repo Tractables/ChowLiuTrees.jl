@@ -4,10 +4,10 @@ using LinearAlgebra: diagind, diag
 using CUDA: CUDA, CuMatrix, CuVector, CuArray
 
 xlogx(x) =
-    iszero(x) ? zero(result) : x * log(x)
+    iszero(x) ? zero(x) : x * log(x)
 
 xlogy(x, y) =
-    iszero(x) && !isnan(y) ? zero(result) : x * log(y)
+    iszero(x) && !isnan(y) ? zero(x) : x * log(y)
 
 #############################
 # Mutual Information on Binary Data
