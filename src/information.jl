@@ -1,9 +1,13 @@
 export pairwise_marginal, pairwise_MI
 
 using LinearAlgebra: diagind, diag
-using StatsFuns: xlogx, xlogy
 using CUDA: CUDA, CuMatrix, CuVector, CuArray
 
+xlogx(x) =
+    iszero(x) ? zero(result) : x * log(x)
+
+xlogy(x, y) =
+    iszero(x) && !isnan(y) ? zero(result) : x * log(y)
 
 #############################
 # Mutual Information on Binary Data
