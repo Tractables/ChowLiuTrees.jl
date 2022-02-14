@@ -45,8 +45,8 @@ function pairwise_marginal(data::Union{Matrix{Bool}, CuMatrix{Bool}, BitMatrix};
     # diagonal is the marginal of p(x)
     diag = diagind(pxy[:, :, 1])
     @view(pxy[:,:, 1])[diag] .+= joint_count
-    @view(pxy[:,:, 2])[diag] .-= joint_count
-    @view(pxy[:,:, 3])[diag] .-= joint_count
+    @view(pxy[:,:, 2])[diag] .= zero(Float)
+    @view(pxy[:,:, 3])[diag] .= zero(Float) 
     @view(pxy[:,:, 4])[diag] .+= joint_count
 
     if data isa CuMatrix
