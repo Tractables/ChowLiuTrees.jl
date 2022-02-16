@@ -32,10 +32,10 @@ function learn_chow_liu_trees(train_x;
 end
 
 function learn_chow_liu_tree(train_x;
-    num_trees=1, dropout_prob=0.0, weights=nothing, 
+    dropout_prob=0.0, weights=nothing, 
     pseudocount=1.0, Float=Float64)
     learn_chow_liu_trees(train_x;
-        num_trees, dropout_prob, weights, pseudocount, Float)[1]
+        num_trees=1, dropout_prob, weights, pseudocount, Float)[1]
 end
 
 
