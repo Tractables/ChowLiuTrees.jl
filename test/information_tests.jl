@@ -26,7 +26,7 @@ using ChowLiuTrees
     @test mi_bit[3,3] ≈ 0.6730116670092565
 
     data_types = if CUDA.functional()
-        [CuMatrix{Bool}, Matrix{Bool}, Matrix{Int}, ] # CuArray{Int}
+        [CuMatrix{Bool}, Matrix{Bool}, Matrix{Int}, CuMatrix{Int}]
     else
         [Matrix{Bool}, Matrix{Int}]
     end
@@ -41,9 +41,6 @@ using ChowLiuTrees
                         weights=weights, pseudocount=pseudocount, Float=Float) 
                 for T in data_types
                     x2 = T(x_bit)
-                    if T == Matrix{Int}
-                        x2 .+= 1
-                    end
                     mar2 = pairwise_marginal(x2;
                             weights=weights, pseudocount=pseudocount, Float=Float)
                     mi2 = pairwise_MI(x2; 
@@ -53,13 +50,13 @@ using ChowLiuTrees
                         mar2 = Array(mar2)
                         mi2 = Array(mi2)
                     end
-                    if T == Matrix{Int}
-                        @test all(mar2[:, :, 1, 1] .== mar1[:, :, 1])
-                        @test all(mar2[:, :, 1, 2] .== mar1[:, :, 2])
-                        @test all(mar2[:, :, 2, 1] .== mar1[:, :, 3])
-                        @test all(mar2[:, :, 2, 2] .== mar1[:, :, 4])
+                    if T == Matrix{Int} || T == CuMatrix{Int}
+                        @test all(mar2[:, :, 1, 1] .≈ mar1[:, :, 1])
+                        @test all(mar2[:, :, 1, 2] .≈ mar1[:, :, 2])
+                        @test all(mar2[:, :, 2, 1] .≈ mar1[:, :, 3])
+                        @test all(mar2[:, :, 2, 2] .≈ mar1[:, :, 4])
                     else
-                        @test all(mar1 .== mar2)
+                        @test all(mar1 .≈ mar2)
                     end
                     @test all(isapprox(mi1, mi2; atol=1e-5))
                 end
@@ -80,7 +77,7 @@ end
         2  3  2  3
         1  2  3  3
         3  1  2  3
-        1  2  3  1]
+        1  2  3  1] .- 1
     
     m = pairwise_marginal(x, pseudocount=0.0)
     mi = pairwise_MI(x, pseudocount=0.0)
@@ -92,5 +89,12 @@ end
     @test mi[2,3] ≈ 0.0
     @test mi[2,4] ≈ 0.3025260261455486
 
-    # TODO: compare with GPU
+    if CUDA.functional()
+        m_gpu = pairwise_marginal(cu(x), pseudocount=0.0)
+        mi_gpu = pairwise_MI(cu(x), pseudocount=0.0)
+
+        @test all(m .≈ m_gpu)
+        @test all(mi .≈ mi_gpu)
+    end
+    
 end
