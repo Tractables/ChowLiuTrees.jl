@@ -2,7 +2,7 @@ using DataStructures: PriorityQueue, enqueue!, dequeue!, dequeue_pair!,
 IntDisjointSets, in_same_set, union!
 using CUDA
 
-export learn_chow_liu_tree
+export learn_chow_liu_tree, learn_chow_liu_trees
 
 
 "Learn Chow Liu Tree(s). It will run on CPU/GPU based on where `train_x` is.
@@ -17,14 +17,25 @@ Keyword arguments:
 - `pseudocount=0.0`: add a total of pseudo count spread out overall all categories.
 - `Float=Float64`: precision. `Float32` is faster if `train_x` a large.
 "
-function learn_chow_liu_tree(train_x::Union{Matrix, CuMatrix, BitMatrix};
-        num_trees::Integer=1, dropout_prob::Float64=0.0,
-        weights::Union{Vector, CuVector, Nothing}=nothing, 
-        pseudocount::Float64=1.0,
-        Float=Float64)
+function learn_chow_liu_trees(train_x;
+        num_trees=1, dropout_prob=0.0, weights=nothing, 
+        pseudocount=1.0, Float=Float64)
     MI = pairwise_MI(train_x; weights, pseudocount, Float)
-    MI = Array(MI) # TODO: GPU MST
-    topk_MST(- MI; num_trees, dropout_prob)
+    if MI isa CuArray
+        MI_cpu = Array(MI) # TODO: GPU MST
+        CUDA.unsafe_free!(MI)
+    else
+        MI_cpu = MI
+    end
+
+    topk_MST(-MI_cpu; num_trees, dropout_prob)
+end
+
+function learn_chow_liu_tree(train_x;
+    dropout_prob=0.0, weights=nothing, 
+    pseudocount=1.0, Float=Float64)
+    learn_chow_liu_trees(train_x;
+        num_trees=1, dropout_prob, weights, pseudocount, Float)[1]
 end
 
 
