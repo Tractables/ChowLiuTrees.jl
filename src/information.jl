@@ -89,10 +89,9 @@ end
 
 function pairwise_marginal(data::Matrix;
         weights::Union{Vector, Nothing}=nothing,
-        num_cats=maximum(data),
+        num_cats=maximum(data)+1,
         pseudocount=0.0,
         Float=Float64)
-    @assert minimum(data) > 0 "Categorical data labels are assumed to be indexed starting 1"
 
     num_samples = size(data, 1)
     num_vars = size(data, 2)
@@ -122,7 +121,7 @@ function pairwise_marginal(data::Matrix;
                     end
                 end
                 @simd for k = 1:size(data,1) # @avx here gives incorrect results
-                    @inbounds pair_margs[i,j,data[k,i],data[k,j]] += weights[k]
+                    @inbounds pair_margs[i,j,1+data[k,i],1+data[k,j]] += weights[k]
                 end
                 @inbounds pair_margs[i,j,:,:] ./= Z
             else
@@ -138,11 +137,9 @@ end
 
 function pairwise_marginal(data::CuMatrix; 
         weights::Union{CuVector, Nothing}=nothing,
-        num_cats=maximum(data),
+        num_cats=maximum(data)+1,
         pseudocount=0.0,
         Float=Float64)
-
-    @assert minimum(data) > 0 "Categorical data labels are assumed to be indexed starting 1"
 
     num_samples = size(data, 1)
     num_vars = size(data, 2)
@@ -176,7 +173,7 @@ function pairwise_marginal(data::CuMatrix;
                     end
                 end
                 for k = 1:size(data_device,1)
-                    pair_margs_device[i,j,data_device[k,i],data_device[k,j]] += weights_device[k]
+                    pair_margs_device[i,j,1+data_device[k,i],1+data_device[k,j]] += weights_device[k]
                 end
             end
             nothing
@@ -197,7 +194,7 @@ end
 
 function pairwise_MI(data::Matrix;
             weights::Union{Vector, Nothing} = nothing,
-            num_cats=maximum(data),
+            num_cats=maximum(data)+1,
             pseudocount=0.0,
             Float=Float64)
     num_samples = size(data, 1)
