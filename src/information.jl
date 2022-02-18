@@ -1,7 +1,6 @@
 export pairwise_marginal, pairwise_MI
 
 using LinearAlgebra: diagind, diag
-using StatsFuns: xlogx, xlogy
 using CUDA
 
 xlogx(x) =
