@@ -89,7 +89,7 @@ end
 
 function pairwise_marginal(data::Matrix;
                            weights::Union{Vector, Nothing} = nothing,
-                           num_cats = maximum(data) - minimum(data) + 1,
+                           num_cats = maximum(data) + 1,
                            pseudocount = zero(Float32),
                            Float = Float32)
 
@@ -178,7 +178,7 @@ end
 
 function pairwise_marginal(data::CuMatrix; 
                            weights::Union{CuVector, Vector, Nothing} = nothing,
-                           num_cats = maximum(data) - minimum(data) + 1,
+                           num_cats = maximum(data) + 1,
                            pseudocount = zero(Float32),
                            Float = Float32)
 
