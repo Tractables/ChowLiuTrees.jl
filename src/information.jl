@@ -248,7 +248,7 @@ end
 
 function pairwise_MI(data::Union{Matrix,CuMatrix};
                      weights::Union{Vector, Nothing} = nothing,
-                     num_cats = maximum(data) - minimum(data) + 1,
+                     num_cats = maximum(data) + 1,
                      pseudocount = zero(Float32),
                      Float = Float32)
     num_samples = size(data, 1)
